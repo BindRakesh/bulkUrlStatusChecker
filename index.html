@@ -163,17 +163,17 @@
             white-space: nowrap;
         }
         
-        table.dataTable tbody tr td:first-child {
+        /* Target the first and fourth column (URL and Target URL) for scroll behavior */
+        table.dataTable tbody tr td:first-child,
+        table.dataTable tbody tr td:nth-child(4) {
             overflow-x: auto;
             max-width: 0;
         }
-
-        /* --- NEW: Table Row Hover Effect --- */
+        
         table.dataTable tbody tr:hover {
             background-color: #f5f5f5;
         }
 
-        /* --- NEW: Status Code Coloring --- */
         .status-badge {
             display: inline-block;
             padding: .25em .6em;
@@ -228,10 +228,11 @@
         <table id="statusTable" class="display" style="width:100%">
             <thead>
                 <tr>
-                    <th width="50%">URL</th>
+                    <th width="35%">URL</th>
                     <th width="10%">Status</th>
                     <th width="15%">Server Name</th>
-                    <th width="25%">Comment</th>
+                    <th width="30%">Target URL</th>
+                    <th width="10%">Comment</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -251,16 +252,16 @@
     <script>
         $(document).ready(function() {
             const table = $('#statusTable').DataTable({
-                // --- NEW: Page Size Options ---
                 lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
-                pageLength: 25, // Default number of rows to display
-                dom: 'Bfrtip',
+                pageLength: 25,
+                dom: 'lBfrtip', // Added 'l' for length menu
                 buttons: ['excelHtml5'],
+                
+                // --- MODIFIED THIS SECTION ---
                 columns: [
                     { data: 'url' }, 
                     { 
                         data: 'status',
-                        // --- NEW: Render function for status coloring ---
                         render: function(data, type, row) {
                             if (type === 'display') {
                                 let badgeClass = 'status-invalid';
@@ -276,6 +277,16 @@
                         }
                     },
                     { data: 'serverName' }, 
+                    { 
+                        data: 'targetUrl', // New column for the target URL
+                        render: function(data, type, row) {
+                            // Make the target URL a clickable link
+                            if (data) {
+                                return `<a href="${data}" target="_blank" rel="noopener noreferrer">${data}</a>`;
+                            }
+                            return ""; // Return an empty string if no target URL
+                        }
+                    },
                     { data: 'comment' }
                 ]
             });
