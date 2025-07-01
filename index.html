@@ -161,13 +161,14 @@
 
         table.dataTable tbody td {
             white-space: nowrap;
+            overflow: hidden; /* Hide overflow initially */
+            text-overflow: ellipsis; /* Add ellipsis (...) for overflow text */
         }
         
-        /* Target the first and fourth column (URL and Target URL) for scroll behavior */
+        /* Allow scrolling only on cells that need it */
         table.dataTable tbody tr td:first-child,
-        table.dataTable tbody tr td:nth-child(4) {
+        table.dataTable tbody tr td.scrollable {
             overflow-x: auto;
-            max-width: 0;
         }
         
         table.dataTable tbody tr:hover {
@@ -190,6 +191,22 @@
         .status-3xx { background-color: var(--warning-color); color: var(--text-color); }
         .status-4xx, .status-5xx, .status-error { background-color: var(--danger-color); }
         .status-invalid { background-color: #6c757d; }
+
+        /* --- NEW: Styling for redirect chain elements --- */
+        .redirect-hop {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .redirect-hop .status-badge {
+            flex-shrink: 0;
+        }
+        .redirect-hop a {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
 
         footer {
             text-align: center;
@@ -228,10 +245,10 @@
         <table id="statusTable" class="display" style="width:100%">
             <thead>
                 <tr>
-                    <th width="35%">URL</th>
+                    <th width="30%">URL</th>
                     <th width="10%">Status</th>
                     <th width="15%">Server Name</th>
-                    <th width="30%">Target URL</th>
+                    <th width="35%">Redirect Chain</th>
                     <th width="10%">Comment</th>
                 </tr>
             </thead>
@@ -250,42 +267,51 @@
     <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
 
     <script>
+        // Helper function to create status badges
+        function createStatusBadge(status) {
+            let badgeClass = 'status-invalid';
+            const statusInt = parseInt(status, 10);
+            if (statusInt >= 200 && statusInt < 300) badgeClass = 'status-2xx';
+            else if (statusInt >= 300 && statusInt < 400) badgeClass = 'status-3xx';
+            else if (statusInt >= 400 && statusInt < 500) badgeClass = 'status-4xx';
+            else if (statusInt >= 500 && statusInt < 600) badgeClass = 'status-5xx';
+            else if (status === 'Error') badgeClass = 'status-error';
+            return `<span class="status-badge ${badgeClass}">${status}</span>`;
+        }
+
         $(document).ready(function() {
             const table = $('#statusTable').DataTable({
                 lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
                 pageLength: 25,
-                dom: 'lBfrtip', // Added 'l' for length menu
+                dom: 'lBfrtip',
                 buttons: ['excelHtml5'],
                 
-                // --- MODIFIED THIS SECTION ---
                 columns: [
                     { data: 'url' }, 
                     { 
                         data: 'status',
                         render: function(data, type, row) {
-                            if (type === 'display') {
-                                let badgeClass = 'status-invalid';
-                                const statusInt = parseInt(data, 10);
-                                if (statusInt >= 200 && statusInt < 300) badgeClass = 'status-2xx';
-                                else if (statusInt >= 300 && statusInt < 400) badgeClass = 'status-3xx';
-                                else if (statusInt >= 400 && statusInt < 500) badgeClass = 'status-4xx';
-                                else if (statusInt >= 500 && statusInt < 600) badgeClass = 'status-5xx';
-                                else if (data === 'Error') badgeClass = 'status-error';
-                                return `<span class="status-badge ${badgeClass}">${data}</span>`;
-                            }
-                            return data;
+                            return type === 'display' ? createStatusBadge(data) : data;
                         }
                     },
                     { data: 'serverName' }, 
                     { 
-                        data: 'targetUrl', // New column for the target URL
+                        data: 'redirectChain',
+                        // --- NEW: Render function to display the redirect chain ---
                         render: function(data, type, row) {
-                            // Make the target URL a clickable link
-                            if (data) {
-                                return `<a href="${data}" target="_blank" rel="noopener noreferrer">${data}</a>`;
+                            if (type === 'display' && Array.isArray(data) && data.length > 0) {
+                                // Map each hop in the chain to an HTML string
+                                const chainHtml = data.map(hop => {
+                                    const statusBadge = createStatusBadge(hop.status);
+                                    const link = `<a href="${hop.url}" target="_blank" rel="noopener noreferrer">${hop.url}</a>`;
+                                    return `<div class="redirect-hop">${statusBadge} → ${link}</div>`;
+                                }).join('');
+                                return chainHtml;
                             }
-                            return ""; // Return an empty string if no target URL
-                        }
+                            return ""; // Return an empty string if no redirect chain
+                        },
+                        // Add a class to make this column scrollable if needed
+                        className: 'scrollable'
                     },
                     { data: 'comment' }
                 ]
