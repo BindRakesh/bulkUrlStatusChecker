@@ -7,7 +7,7 @@ import socket
 import ipaddress
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from urllib.parse import urlparse # No longer need 'validators'
+from urllib.parse import urlparse
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO)
@@ -60,30 +60,43 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
     if is_akamai: return "Akamai"
     return "Unknown"
 
+# --- MODIFIED THIS FUNCTION ---
 async def check_url_status(client: httpx.AsyncClient, url: str):
+    # Base structure for the response dictionary
+    response_data = {"url": url, "status": "", "comment": "", "serverName": "N/A", "targetUrl": ""}
     try:
         response = await client.get(url, follow_redirects=False, timeout=20.0)
-        server_name = await get_server_name_advanced(response.headers, str(response.url))
-        comment = "OK"
+        
+        response_data["status"] = response.status_code
+        response_data["serverName"] = await get_server_name_advanced(response.headers, str(response.url))
+        response_data["comment"] = "OK"
+
         if response.is_redirect:
-            location = response.headers.get('location', 'N/A')
-            comment = f"Redirect -> {location}"
+            response_data["targetUrl"] = response.headers.get('location', 'N/A')
+            response_data["comment"] = "Redirect"
         else:
             response.raise_for_status()
-        return {"url": url, "status": response.status_code, "comment": comment, "serverName": server_name}
-    except httpx.HTTPStatusError as e:
-        comment = "Client/Server Error"
-        server_name = "N/A"
-        if e.response.status_code == 404:
-            comment = "Not Found"
-        else:
-            server_name = await get_server_name_advanced(e.response.headers, str(e.response.url))
-        return {"url": url, "status": e.response.status_code, "comment": comment, "serverName": server_name}
-    except httpx.RequestError as e:
-        return {"url": url, "status": "Error", "comment": f"Request failed: {type(e).__name__}", "serverName": "N/A"}
-    except Exception as e:
-        return {"url": url, "status": "Error", "comment": f"An unexpected error occurred", "serverName": "N/A"}
 
+        return response_data
+        
+    except httpx.HTTPStatusError as e:
+        response_data["status"] = e.response.status_code
+        response_data["comment"] = "Client/Server Error"
+        if e.response.status_code == 404:
+            response_data["comment"] = "Not Found"
+        else:
+            response_data["serverName"] = await get_server_name_advanced(e.response.headers, str(e.response.url))
+        return response_data
+
+    except httpx.RequestError as e:
+        response_data["status"] = "Error"
+        response_data["comment"] = f"Request failed: {type(e).__name__}"
+        return response_data
+        
+    except Exception as e:
+        response_data["status"] = "Error"
+        response_data["comment"] = "An unexpected error occurred"
+        return response_data
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -103,7 +116,6 @@ async def websocket_endpoint(websocket: WebSocket):
         async with httpx.AsyncClient() as client:
             tasks = []
             for url in urls:
-                # --- THIS IS THE MODIFIED VALIDATION LOGIC ---
                 # Add "https://" if missing
                 if not url.startswith(("http://", "https://")):
                     url = f"https://{url}"
@@ -114,7 +126,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not (parsed_url.scheme and parsed_url.netloc):
                         raise ValueError
                 except ValueError:
-                    await websocket.send_json({"url": url, "status": "Invalid", "comment": "Improper URL structure", "serverName": "N/A"})
+                    await websocket.send_json({"url": url, "status": "Invalid", "comment": "Improper URL structure", "serverName": "N/A", "targetUrl": ""})
                     continue
 
                 tasks.append(asyncio.create_task(bound_check(url, client)))
