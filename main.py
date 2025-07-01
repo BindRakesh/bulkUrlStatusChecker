@@ -64,8 +64,6 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
 async def check_url_status(client: httpx.AsyncClient, url: str):
     redirect_chain = []
     current_url = url
-    final_status = ""
-    final_comment = ""
     final_server_name = "N/A"
     MAX_REDIRECTS = 15
 
@@ -74,54 +72,44 @@ async def check_url_status(client: httpx.AsyncClient, url: str):
             response = await client.get(current_url, follow_redirects=False, timeout=20.0)
             server_name = await get_server_name_advanced(response.headers, str(response.url))
             
-            # The first hop determines the overall server name
             if i == 0:
                 final_server_name = server_name
 
             if response.is_redirect:
-                hop_info = {"status": response.status_code, "url": response.headers.get('location', 'N/A')}
+                target_url = response.headers.get('location')
+                # Handle relative redirects
+                if target_url and target_url.startswith('/'):
+                    base_url = urlparse(current_url)
+                    target_url = f"{base_url.scheme}://{base_url.netloc}{target_url}"
+
+                hop_info = {"status": response.status_code, "url": target_url or 'N/A'}
                 redirect_chain.append(hop_info)
-                current_url = hop_info["url"]
-                if not current_url:
-                    final_status = response.status_code
-                    final_comment = "Redirect missing location"
-                    break
+                
+                if not target_url:
+                    # If redirect has no location, stop here
+                    return {"url": url, "status": response.status_code, "comment": "Redirect missing location", "serverName": final_server_name, "redirectChain": redirect_chain}
+                current_url = target_url
             else:
                 # Final destination reached
-                response.raise_for_status()
-                final_status = response.status_code
-                final_comment = "OK"
-                # If there was a redirect, the final hop is also part of the chain
+                response.raise_for_status() # Check for 4xx/5xx errors
+                
+                # If we followed redirects, the final destination is part of the chain
                 if redirect_chain:
-                    final_hop_info = {"status": response.status_code, "url": str(response.url)}
-                    redirect_chain.append(final_hop_info)
-                break
-        else:
-             # Loop finished, meaning too many redirects
-            final_status = "Error"
-            final_comment = "Too many redirects"
+                    redirect_chain.append({"status": response.status_code, "url": str(response.url)})
+                
+                return {"url": url, "status": (redirect_chain[0]['status'] if redirect_chain else response.status_code), "comment": ("Redirect Chain" if redirect_chain else "OK"), "serverName": final_server_name, "redirectChain": redirect_chain}
+        
+        # If loop finishes, it's because of too many redirects
+        return {"url": url, "status": "Error", "comment": "Too many redirects", "serverName": final_server_name, "redirectChain": redirect_chain}
 
     except httpx.HTTPStatusError as e:
-        final_status = e.response.status_code
-        final_comment = "Not Found" if e.response.status_code == 404 else "Client/Server Error"
+        comment = "Not Found" if e.response.status_code == 404 else "Client/Server Error"
+        return {"url": url, "status": e.response.status_code, "comment": comment, "serverName": final_server_name, "redirectChain": redirect_chain}
     except httpx.RequestError as e:
-        final_status = "Error"
-        final_comment = f"Request failed: {type(e).__name__}"
+        return {"url": url, "status": "Error", "comment": f"Request failed", "serverName": final_server_name, "redirectChain": redirect_chain}
     except Exception as e:
-        final_status = "Error"
-        final_comment = f"An unexpected error occurred: {e}"
+        return {"url": url, "status": "Error", "comment": "An unexpected error occurred", "serverName": final_server_name, "redirectChain": redirect_chain}
 
-    # For display purposes, the primary status is the first one encountered
-    display_status = redirect_chain[0]['status'] if redirect_chain else final_status
-    display_comment = "Redirect Chain" if redirect_chain else final_comment
-    
-    return {
-        "url": url, 
-        "status": display_status, 
-        "comment": display_comment, 
-        "serverName": final_server_name,
-        "redirectChain": redirect_chain
-    }
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -138,7 +126,7 @@ async def websocket_endpoint(websocket: WebSocket):
             async with semaphore:
                 return await check_url_status(client, url)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(http2=True, limits=httpx.Limits(max_connections=200)) as client:
             tasks = []
             for url in urls:
                 if not url.startswith(("http://", "https://")): url = f"https://{url}"
