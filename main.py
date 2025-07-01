@@ -60,56 +60,68 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
     if is_akamai: return "Akamai"
     return "Unknown"
 
-# --- MODIFIED THIS FUNCTION TO TRACE REDIRECTS ---
+# --- CORRECTED FUNCTION TO TRACE REDIRECTS ---
 async def check_url_status(client: httpx.AsyncClient, url: str):
     redirect_chain = []
     current_url = url
-    response_data = {"url": url, "status": "", "comment": "", "serverName": "N/A", "redirectChain": []}
+    final_status = ""
+    final_comment = ""
+    final_server_name = "N/A"
     MAX_REDIRECTS = 15
 
     try:
-        for _ in range(MAX_REDIRECTS):
+        for i in range(MAX_REDIRECTS):
             response = await client.get(current_url, follow_redirects=False, timeout=20.0)
             server_name = await get_server_name_advanced(response.headers, str(response.url))
             
-            hop_info = {"status": response.status_code, "url": str(response.url), "serverName": server_name}
-            
-            if not response_data["serverName"] or response_data["serverName"] == "N/A":
-                 response_data["serverName"] = server_name
+            # The first hop determines the overall server name
+            if i == 0:
+                final_server_name = server_name
 
             if response.is_redirect:
+                hop_info = {"status": response.status_code, "url": response.headers.get('location', 'N/A')}
                 redirect_chain.append(hop_info)
-                current_url = response.headers.get('location')
+                current_url = hop_info["url"]
                 if not current_url:
-                    response_data["comment"] = "Redirect missing location"
-                    response_data["status"] = response.status_code
-                    break 
+                    final_status = response.status_code
+                    final_comment = "Redirect missing location"
+                    break
             else:
+                # Final destination reached
                 response.raise_for_status()
-                if redirect_chain: # It was a redirect that has now resolved
-                    redirect_chain.append(hop_info)
-                    response_data["status"] = redirect_chain[0]['status'] # Show initial redirect status
-                    response_data["comment"] = "Redirect Chain"
-                else: # Direct hit, no redirects
-                    response_data["status"] = response.status_code
-                    response_data["comment"] = "OK"
+                final_status = response.status_code
+                final_comment = "OK"
+                # If there was a redirect, the final hop is also part of the chain
+                if redirect_chain:
+                    final_hop_info = {"status": response.status_code, "url": str(response.url)}
+                    redirect_chain.append(final_hop_info)
                 break
-        else: # Loop finished without breaking (too many redirects)
-            response_data["status"] = "Error"
-            response_data["comment"] = "Too many redirects"
+        else:
+             # Loop finished, meaning too many redirects
+            final_status = "Error"
+            final_comment = "Too many redirects"
 
     except httpx.HTTPStatusError as e:
-        response_data["status"] = e.response.status_code
-        response_data["comment"] = "Not Found" if e.response.status_code == 404 else "Client/Server Error"
+        final_status = e.response.status_code
+        final_comment = "Not Found" if e.response.status_code == 404 else "Client/Server Error"
     except httpx.RequestError as e:
-        response_data["status"] = "Error"
-        response_data["comment"] = f"Request failed: {type(e).__name__}"
-    except Exception:
-        response_data["status"] = "Error"
-        response_data["comment"] = "An unexpected error occurred"
+        final_status = "Error"
+        final_comment = f"Request failed: {type(e).__name__}"
+    except Exception as e:
+        final_status = "Error"
+        final_comment = f"An unexpected error occurred: {e}"
 
-    response_data["redirectChain"] = redirect_chain
-    return response_data
+    # For display purposes, the primary status is the first one encountered
+    display_status = redirect_chain[0]['status'] if redirect_chain else final_status
+    display_comment = "Redirect Chain" if redirect_chain else final_comment
+    
+    return {
+        "url": url, 
+        "status": display_status, 
+        "comment": display_comment, 
+        "serverName": final_server_name,
+        "redirectChain": redirect_chain
+    }
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
