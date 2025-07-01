@@ -14,6 +14,8 @@
             --primary-color: #007bff;
             --primary-hover-color: #0056b3;
             --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
             --light-gray: #f8f9fa;
             --gray-border: #dee2e6;
             --text-color: #343a40;
@@ -166,6 +168,29 @@
             max-width: 0;
         }
 
+        /* --- NEW: Table Row Hover Effect --- */
+        table.dataTable tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* --- NEW: Status Code Coloring --- */
+        .status-badge {
+            display: inline-block;
+            padding: .25em .6em;
+            font-size: .875em;
+            font-weight: 700;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: .375rem;
+            color: var(--white-color);
+        }
+        .status-2xx { background-color: var(--success-color); }
+        .status-3xx { background-color: var(--warning-color); color: var(--text-color); }
+        .status-4xx, .status-5xx, .status-error { background-color: var(--danger-color); }
+        .status-invalid { background-color: #6c757d; }
+
         footer {
             text-align: center;
             padding: 1.5em;
@@ -226,11 +251,32 @@
     <script>
         $(document).ready(function() {
             const table = $('#statusTable').DataTable({
+                // --- NEW: Page Size Options ---
+                lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
+                pageLength: 25, // Default number of rows to display
                 dom: 'Bfrtip',
                 buttons: ['excelHtml5'],
                 columns: [
-                    { data: 'url' }, { data: 'status' },
-                    { data: 'serverName' }, { data: 'comment' }
+                    { data: 'url' }, 
+                    { 
+                        data: 'status',
+                        // --- NEW: Render function for status coloring ---
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                let badgeClass = 'status-invalid';
+                                const statusInt = parseInt(data, 10);
+                                if (statusInt >= 200 && statusInt < 300) badgeClass = 'status-2xx';
+                                else if (statusInt >= 300 && statusInt < 400) badgeClass = 'status-3xx';
+                                else if (statusInt >= 400 && statusInt < 500) badgeClass = 'status-4xx';
+                                else if (statusInt >= 500 && statusInt < 600) badgeClass = 'status-5xx';
+                                else if (data === 'Error') badgeClass = 'status-error';
+                                return `<span class="status-badge ${badgeClass}">${data}</span>`;
+                            }
+                            return data;
+                        }
+                    },
+                    { data: 'serverName' }, 
+                    { data: 'comment' }
                 ]
             });
 
