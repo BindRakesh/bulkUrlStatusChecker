@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Status Checker</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 2em; background-color: #f4f4f9; color: #333;}
+        .container { max-width: 1200px; margin: auto; background: white; padding: 2em; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #0056b3; }
+        textarea { width: 100%; box-sizing: border-box; min-height: 200px; margin-bottom: 1em; border: 1px solid #ccc; border-radius: 4px; padding: 8px; font-family: monospace;}
+        #checkBtn { display: block; width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; font-weight: bold; }
+        #checkBtn:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .dataTables_wrapper { margin-top: 2em; }
+        table.dataTable thead th { background-color: #f2f2f2; }
+        .status-message { text-align: center; margin-top: 1em; padding: 10px; border-radius: 4px; display: none; }
+        .status-message.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        #progressContainer { margin-top: 1.5em; }
+        .progress-bar-background { width: 100%; background-color: #e9ecef; border-radius: .25rem; height: 20px; }
+        #progressBar { width: 0%; height: 20px; background-color: #007bff; border-radius: .25rem; text-align: center; line-height: 20px; color: white; transition: width .4s ease; }
+        #progressText { text-align: center; margin-bottom: .5rem; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>URL Status & Server Checker</h1>
+        <p>Enter one URL per line. The status and server type of each URL will be checked and displayed in the table below.</p>
+        <textarea id="linksInput" placeholder="https://www.google.com&#10;https://www.github.com"></textarea>
+        <button id="checkBtn">Check Status</button>
+        <div id="statusMessage" class="status-message"></div>
+        <div id="progressContainer" style="display: none;">
+            <div id="progressText"></div>
+            <div class="progress-bar-background">
+                <div id="progressBar"></div>
+            </div>
+        </div>
+        <table id="statusTable" class="display" style="width:100%">
+            <thead>
+                <tr><th>URL</th><th>Status</th><th>Server Name</th><th>Comment</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            const table = $('#statusTable').DataTable({
+                dom: 'Bfrtip',
+                buttons: ['excelHtml5'],
+                columns: [
+                    { data: 'url' }, { data: 'status' },
+                    { data: 'serverName' }, { data: 'comment' }
+                ]
+            });
+
+            const checkBtn = $('#checkBtn');
+            const linksInput = $('#linksInput');
+            const statusMessage = $('#statusMessage');
+            const progressContainer = $('#progressContainer');
+            const progressBar = $('#progressBar');
+            const progressText = $('#progressText');
+            let socket;
+
+            checkBtn.on('click', function() {
+                const urls = linksInput.val().split('\n').filter(Boolean);
+                if (urls.length === 0) {
+                    alert("Please enter at least one URL.");
+                    return;
+                }
+                
+                if (socket && socket.readyState < 2) { socket.close(); }
+                table.clear().draw();
+                checkBtn.prop('disabled', true).text('Checking...');
+                statusMessage.hide();
+                
+                let completedUrls = 0;
+                const totalUrls = urls.length;
+                progressText.text(`Checked 0 / ${totalUrls}`);
+                progressBar.css('width', '0%').text('');
+                progressContainer.show();
+
+                // --- THIS IS THE CRUCIAL UPDATE ---
+                // Automatically determine if we need ws:// or wss://
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const ws_host = window.location.host;
+                const socket_url = `${protocol}//${ws_host}/ws`;
+                console.log("Connecting to WebSocket at:", socket_url); // For debugging
+                socket = new WebSocket(socket_url);
+
+                socket.onopen = function() {
+                    socket.send(linksInput.val());
+                };
+
+                socket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.status === 'done') {
+                        progressText.text(`Checked ${totalUrls} / ${totalUrls}`);
+                        progressBar.css('width', '100%').text('100%');
+                        setTimeout(function() {
+                            progressContainer.hide();
+                            statusMessage.text(`Processing complete! ${totalUrls} URLs checked.`).addClass('success').show();
+                        }, 500);
+                        checkBtn.prop('disabled', false).text('Check Status');
+                        socket.close();
+                        return;
+                    }
+                    
+                    completedUrls++;
+                    const percentage = Math.round((completedUrls / totalUrls) * 100);
+                    progressText.text(`Checked ${completedUrls} / ${totalUrls}`);
+                    progressBar.css('width', percentage + '%').text(percentage + '%');
+                    table.row.add(data).draw(false);
+                };
+
+                socket.onclose = function(event) {
+                    console.log("WebSocket connection closed.");
+                    if (checkBtn.prop('disabled')) {
+                        checkBtn.prop('disabled', false).text('Check Status');
+                        progressContainer.hide();
+                    }
+                };
+
+                socket.onerror = function(error) {
+                    console.error("WebSocket Error: ", error);
+                    alert("Could not connect to the server. Please ensure the backend is running.");
+                    checkBtn.prop('disabled', false).text('Check Status');
+                    progressContainer.hide();
+                };
+            });
+        });
+    </script>
+</body>
+</html>
