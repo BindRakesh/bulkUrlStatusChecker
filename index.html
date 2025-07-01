@@ -152,23 +152,20 @@
             margin-top: 2.5em; 
         }
 
-        /* --- NEW CSS FOR FIXED TABLE LAYOUT AND SCROLLABLE URLS --- */
         table.dataTable {
-            table-layout: fixed; /* Prevents table from resizing based on content */
-            width: 100% !important; /* Ensures it respects the container width */
+            table-layout: fixed;
+            width: 100% !important;
         }
 
         table.dataTable tbody td {
-            white-space: nowrap; /* Prevents text from wrapping to the next line */
+            white-space: nowrap;
         }
         
-        /* Target the first column (URL column) for specific scroll behavior */
         table.dataTable tbody tr td:first-child {
-            overflow-x: auto; /* Adds a horizontal scrollbar if content overflows */
-            max-width: 0; /* A trick to make overflow work in table cells */
+            overflow-x: auto;
+            max-width: 0;
         }
 
-        /* Signature Footer */
         footer {
             text-align: center;
             padding: 1.5em;
@@ -206,10 +203,10 @@
         <table id="statusTable" class="display" style="width:100%">
             <thead>
                 <tr>
-                    <th>URL</th>
-                    <th>Status</th>
-                    <th>Server Name</th>
-                    <th>Comment</th>
+                    <th width="50%">URL</th>
+                    <th width="10%">Status</th>
+                    <th width="15%">Server Name</th>
+                    <th width="25%">Comment</th>
                 </tr>
             </thead>
             <tbody></tbody>
