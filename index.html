@@ -14,8 +14,6 @@
             --primary-color: #007bff;
             --primary-hover-color: #0056b3;
             --success-color: #28a745;
-            --warning-color: #ffc107;
-            --danger-color: #dc3545;
             --light-gray: #f8f9fa;
             --gray-border: #dee2e6;
             --text-color: #343a40;
@@ -161,52 +159,11 @@
 
         table.dataTable tbody td {
             white-space: nowrap;
-            overflow: hidden; 
-            text-overflow: ellipsis;
         }
         
-        table.dataTable tbody tr td:first-child,
-        table.dataTable tbody tr td.scrollable {
+        table.dataTable tbody tr td:first-child {
             overflow-x: auto;
-        }
-        
-        table.dataTable tbody tr:hover {
-            background-color: #f5f5f5;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: .25em .6em;
-            font-size: .875em;
-            font-weight: 700;
-            line-height: 1;
-            text-align: center;
-            white-space: nowrap;
-            vertical-align: baseline;
-            border-radius: .375rem;
-            color: var(--white-color);
-        }
-        .status-2xx { background-color: var(--success-color); }
-        .status-3xx { background-color: var(--warning-color); color: var(--text-color); }
-        .status-4xx, .status-5xx, .status-error { background-color: var(--danger-color); }
-        .status-invalid { background-color: #6c757d; }
-
-        .redirect-hop {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 4px; 
-        }
-        .redirect-hop .status-badge {
-            flex-shrink: 0;
-        }
-        .redirect-hop a {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: inline-block;
-            vertical-align: middle;
-            max-width: 90%; 
+            max-width: 0;
         }
 
         footer {
@@ -232,7 +189,7 @@
         <h1><span class="header-icon">🔗</span>Bulk URL Status Checker</h1>
         <p class="description">Enter URLs below to check their HTTP status and server type in real-time.</p>
         
-        <textarea id="linksInput" placeholder="https://www.google.com&#10;http://github.com&#10;https://render.com"></textarea>
+        <textarea id="linksInput" placeholder="https://www.google.com&#10;https://www.github.com&#10;https://render.com"></textarea>
         <button id="checkBtn">Check Status</button>
         
         <div id="statusMessage" class="status-message"></div>
@@ -246,11 +203,10 @@
         <table id="statusTable" class="display" style="width:100%">
             <thead>
                 <tr>
-                    <th width="30%">URL</th>
+                    <th width="50%">URL</th>
                     <th width="10%">Status</th>
                     <th width="15%">Server Name</th>
-                    <th width="35%">Redirect Chain</th>
-                    <th width="10%">Comment</th>
+                    <th width="25%">Comment</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -268,51 +224,13 @@
     <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
 
     <script>
-        // Helper function to create status badges
-        function createStatusBadge(status) {
-            let badgeClass = 'status-invalid';
-            const statusInt = parseInt(status, 10);
-            if (statusInt >= 200 && statusInt < 300) badgeClass = 'status-2xx';
-            else if (statusInt >= 300 && statusInt < 400) badgeClass = 'status-3xx';
-            else if (statusInt >= 400 && statusInt < 500) badgeClass = 'status-4xx';
-            else if (statusInt >= 500 && statusInt < 600) badgeClass = 'status-5xx';
-            else if (status === 'Error') badgeClass = 'status-error';
-            return `<span class="status-badge ${badgeClass}">${status}</span>`;
-        }
-
         $(document).ready(function() {
             const table = $('#statusTable').DataTable({
-                lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
-                pageLength: 25,
-                dom: 'lBfrtip',
+                dom: 'Bfrtip',
                 buttons: ['excelHtml5'],
-                
                 columns: [
-                    { data: 'url' }, 
-                    { 
-                        data: 'status',
-                        render: function(data, type, row) {
-                            return type === 'display' ? createStatusBadge(data) : data;
-                        }
-                    },
-                    { data: 'serverName' }, 
-                    { 
-                        data: 'redirectChain',
-                        // --- CORRECTED RENDER FUNCTION ---
-                        render: function(data, type, row) {
-                            if (type === 'display' && Array.isArray(data) && data.length > 0) {
-                                const chainHtml = data.map(hop => {
-                                    const statusBadge = createStatusBadge(hop.status);
-                                    const link = `<a href="${hop.url}" target="_blank" rel="noopener noreferrer">${hop.url}</a>`;
-                                    return `<div class="redirect-hop">${statusBadge} → ${link}</div>`;
-                                }).join('');
-                                return chainHtml;
-                            }
-                            return ""; // Return empty string if no redirect chain
-                        },
-                        className: 'scrollable'
-                    },
-                    { data: 'comment' }
+                    { data: 'url' }, { data: 'status' },
+                    { data: 'serverName' }, { data: 'comment' }
                 ]
             });
 
