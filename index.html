@@ -195,7 +195,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 4px; /* Space between hops */
+            margin-bottom: 4px; 
         }
         .redirect-hop .status-badge {
             flex-shrink: 0;
@@ -206,7 +206,7 @@
             text-overflow: ellipsis;
             display: inline-block;
             vertical-align: middle;
-            max-width: 90%; /* Prevent link from pushing badge out */
+            max-width: 90%; 
         }
 
         footer {
@@ -301,7 +301,6 @@
                         // --- CORRECTED RENDER FUNCTION ---
                         render: function(data, type, row) {
                             if (type === 'display' && Array.isArray(data) && data.length > 0) {
-                                // Map each hop in the chain to a styled HTML string
                                 const chainHtml = data.map(hop => {
                                     const statusBadge = createStatusBadge(hop.status);
                                     const link = `<a href="${hop.url}" target="_blank" rel="noopener noreferrer">${hop.url}</a>`;
@@ -309,7 +308,7 @@
                                 }).join('');
                                 return chainHtml;
                             }
-                            return ""; // Return an empty string if no redirect chain
+                            return ""; // Return empty string if no redirect chain
                         },
                         className: 'scrollable'
                     },
