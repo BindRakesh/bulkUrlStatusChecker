@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk URL Status Checker</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔗</text></svg>">
+    
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --primary-hover-color: #0056b3;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --light-gray: #f8f9fa;
+            --gray-border: #dee2e6;
+            --text-color: #343a40;
+            --heading-color: #212529;
+            --white-color: #ffffff;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            margin: 0; 
+            background-color: var(--light-gray); 
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        .main-container {
+            max-width: 1200px; 
+            margin: 2em auto; 
+            background: var(--white-color); 
+            padding: 2.5em; 
+            border-radius: 12px; 
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+            flex-grow: 1;
+        }
+
+        h1 { 
+            text-align: center; 
+            color: var(--heading-color);
+            font-weight: 600;
+            margin-bottom: 0.5em;
+        }
+
+        .header-icon {
+            font-size: 2.5rem;
+            vertical-align: middle;
+            margin-right: 0.2em;
+        }
+
+        p.description {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #6c757d;
+            margin-bottom: 2em;
+        }
+
+        textarea { 
+            width: 100%; 
+            box-sizing: border-box; 
+            min-height: 250px; 
+            margin-bottom: 1em; 
+            border: 1px solid var(--gray-border); 
+            border-radius: 8px; 
+            padding: 12px; 
+            font-family: monospace;
+            font-size: 1rem;
+            resize: vertical;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        #checkBtn { 
+            display: block; 
+            width: 100%; 
+            padding: 14px; 
+            background-color: var(--primary-color); 
+            color: var(--white-color); 
+            border: none; 
+            cursor: pointer; 
+            border-radius: 8px; 
+            font-size: 1.1rem; 
+            font-weight: bold;
+            transition: background-color 0.2s ease-in-out;
+        }
+        
+        #checkBtn:hover:not(:disabled) {
+            background-color: var(--primary-hover-color);
+        }
+        
+        #checkBtn:disabled { 
+            background-color: #cccccc; 
+            cursor: not-allowed; 
+        }
+
+        .status-message { 
+            text-align: center; 
+            margin-top: 1em; 
+            padding: 12px; 
+            border-radius: 8px; 
+            display: none; 
+            font-weight: 500;
+        }
+
+        .status-message.success { 
+            background-color: #d4edda; 
+            color: #155724; 
+            border: 1px solid #c3e6cb; 
+        }
+
+        #progressContainer { 
+            margin-top: 1.5em; 
+        }
+        
+        .progress-bar-background { 
+            width: 100%; 
+            background-color: #e9ecef; 
+            border-radius: 8px; 
+            height: 22px; 
+            overflow: hidden;
+        }
+
+        #progressBar { 
+            width: 0%; 
+            height: 100%; 
+            background-color: var(--success-color); 
+            text-align: center; 
+            line-height: 22px; 
+            color: var(--white-color); 
+            font-weight: bold;
+            transition: width .4s ease; 
+        }
+        
+        #progressText { 
+            text-align: center; 
+            margin-bottom: .5rem; 
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .dataTables_wrapper { 
+            margin-top: 2.5em; 
+        }
+
+        table.dataTable {
+            table-layout: fixed;
+            width: 100% !important;
+        }
+
+        table.dataTable tbody td {
+            white-space: nowrap;
+        }
+        
+        /* Target the first and fourth column (URL and Target URL) for scroll behavior */
+        table.dataTable tbody tr td:first-child,
+        table.dataTable tbody tr td:nth-child(4) {
+            overflow-x: auto;
+            max-width: 0;
+        }
+        
+        table.dataTable tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: .25em .6em;
+            font-size: .875em;
+            font-weight: 700;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: .375rem;
+            color: var(--white-color);
+        }
+        .status-2xx { background-color: var(--success-color); }
+        .status-3xx { background-color: var(--warning-color); color: var(--text-color); }
+        .status-4xx, .status-5xx, .status-error { background-color: var(--danger-color); }
+        .status-invalid { background-color: #6c757d; }
+
+        footer {
+            text-align: center;
+            padding: 1.5em;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        
+        footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <h1><span class="header-icon">🔗</span>Bulk URL Status Checker</h1>
+        <p class="description">Enter URLs below to check their HTTP status and server type in real-time.</p>
+        
+        <textarea id="linksInput" placeholder="https://www.google.com&#10;https://www.github.com&#10;https://render.com"></textarea>
+        <button id="checkBtn">Check Status</button>
+        
+        <div id="statusMessage" class="status-message"></div>
+        <div id="progressContainer" style="display: none;">
+            <div id="progressText"></div>
+            <div class="progress-bar-background">
+                <div id="progressBar"></div>
+            </div>
+        </div>
+        
+        <table id="statusTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th width="35%">URL</th>
+                    <th width="10%">Status</th>
+                    <th width="15%">Server Name</th>
+                    <th width="30%">Target URL</th>
+                    <th width="10%">Comment</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <footer>
+        Created by <a href="https://github.com/BindRakesh" target="_blank" rel="noopener noreferrer">BindRakesh</a>
+    </footer>
+
+    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            const table = $('#statusTable').DataTable({
+                lengthMenu: [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
+                pageLength: 25,
+                dom: 'lBfrtip', // Added 'l' for length menu
+                buttons: ['excelHtml5'],
+                
+                // --- MODIFIED THIS SECTION ---
+                columns: [
+                    { data: 'url' }, 
+                    { 
+                        data: 'status',
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                let badgeClass = 'status-invalid';
+                                const statusInt = parseInt(data, 10);
+                                if (statusInt >= 200 && statusInt < 300) badgeClass = 'status-2xx';
+                                else if (statusInt >= 300 && statusInt < 400) badgeClass = 'status-3xx';
+                                else if (statusInt >= 400 && statusInt < 500) badgeClass = 'status-4xx';
+                                else if (statusInt >= 500 && statusInt < 600) badgeClass = 'status-5xx';
+                                else if (data === 'Error') badgeClass = 'status-error';
+                                return `<span class="status-badge ${badgeClass}">${data}</span>`;
+                            }
+                            return data;
+                        }
+                    },
+                    { data: 'serverName' }, 
+                    { 
+                        data: 'targetUrl', // New column for the target URL
+                        render: function(data, type, row) {
+                            // Make the target URL a clickable link
+                            if (data) {
+                                return `<a href="${data}" target="_blank" rel="noopener noreferrer">${data}</a>`;
+                            }
+                            return ""; // Return an empty string if no target URL
+                        }
+                    },
+                    { data: 'comment' }
+                ]
+            });
+
+            const checkBtn = $('#checkBtn');
+            const linksInput = $('#linksInput');
+            const statusMessage = $('#statusMessage');
+            const progressContainer = $('#progressContainer');
+            const progressBar = $('#progressBar');
+            const progressText = $('#progressText');
+            let socket;
+
+            checkBtn.on('click', function() {
+                const urls = linksInput.val().split('\n').filter(Boolean);
+                if (urls.length === 0) {
+                    alert("Please enter at least one URL.");
+                    return;
+                }
+                
+                if (socket && socket.readyState < 2) { socket.close(); }
+                table.clear().draw();
+                checkBtn.prop('disabled', true).text('Checking...');
+                statusMessage.hide();
+                
+                let completedUrls = 0;
+                const totalUrls = urls.length;
+                progressText.text(`Checked 0 / ${totalUrls}`);
+                progressBar.css('width', '0%').text('');
+                progressContainer.show();
+
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const ws_host = window.location.host;
+                const socket_url = `${protocol}//${ws_host}/ws`;
+                socket = new WebSocket(socket_url);
+
+                socket.onopen = function() {
+                    socket.send(linksInput.val());
+                };
+
+                socket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.status === 'done') {
+                        progressText.text(`Checked ${totalUrls} / ${totalUrls}`);
+                        progressBar.css('width', '100%').text('100%');
+                        setTimeout(function() {
+                            progressContainer.hide();
+                            statusMessage.text(`Processing complete! ${totalUrls} URLs checked.`).addClass('success').show();
+                        }, 500);
+                        checkBtn.prop('disabled', false).text('Check Status');
+                        socket.close();
+                        return;
+                    }
+                    
+                    completedUrls++;
+                    const percentage = Math.round((completedUrls / totalUrls) * 100);
+                    progressText.text(`Checked ${completedUrls} / ${totalUrls}`);
+                    progressBar.css('width', percentage + '%').text(percentage + '%');
+                    table.row.add(data).draw(false);
+                };
+
+                socket.onclose = function(event) {
+                    if (checkBtn.prop('disabled')) {
+                        checkBtn.prop('disabled', false).text('Check Status');
+                        progressContainer.hide();
+                    }
+                };
+
+                socket.onerror = function(error) {
+                    console.error("WebSocket Error: ", error);
+                    alert("Could not connect to the server. Please ensure the backend is running.");
+                    checkBtn.prop('disabled', false).text('Check Status');
+                    progressContainer.hide();
+                };
+            });
+        });
+    </script>
+</body>
+</html>
