@@ -152,6 +152,22 @@
             margin-top: 2.5em; 
         }
 
+        /* --- NEW CSS FOR FIXED TABLE LAYOUT AND SCROLLABLE URLS --- */
+        table.dataTable {
+            table-layout: fixed; /* Prevents table from resizing based on content */
+            width: 100% !important; /* Ensures it respects the container width */
+        }
+
+        table.dataTable tbody td {
+            white-space: nowrap; /* Prevents text from wrapping to the next line */
+        }
+        
+        /* Target the first column (URL column) for specific scroll behavior */
+        table.dataTable tbody tr td:first-child {
+            overflow-x: auto; /* Adds a horizontal scrollbar if content overflows */
+            max-width: 0; /* A trick to make overflow work in table cells */
+        }
+
         /* Signature Footer */
         footer {
             text-align: center;
