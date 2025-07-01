@@ -1,14 +1,13 @@
 # main.py
 import asyncio
 import httpx
-import validators
 import uvicorn
 import logging
 import socket
 import ipaddress
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from urllib.parse import urlparse
+from urllib.parse import urlparse # No longer need 'validators'
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +62,7 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
 
 async def check_url_status(client: httpx.AsyncClient, url: str):
     try:
-        response = await client.get(url, follow_redirects=False, timeout=20.0) # Increased timeout slightly
+        response = await client.get(url, follow_redirects=False, timeout=20.0)
         server_name = await get_server_name_advanced(response.headers, str(response.url))
         comment = "OK"
         if response.is_redirect:
@@ -85,6 +84,7 @@ async def check_url_status(client: httpx.AsyncClient, url: str):
     except Exception as e:
         return {"url": url, "status": "Error", "comment": f"An unexpected error occurred", "serverName": "N/A"}
 
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -93,12 +93,9 @@ async def websocket_endpoint(websocket: WebSocket):
         data = await websocket.receive_text()
         urls = [url.strip() for url in data.splitlines() if url.strip()]
         
-        # --- THIS IS THE MODIFIED LOGIC ---
-        # 1. Create a Semaphore to limit concurrent requests to a reasonable number
         CONCURRENCY_LIMIT = 100
         semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
-        # 2. Define a worker function that uses the semaphore
         async def bound_check(url, client):
             async with semaphore:
                 return await check_url_status(client, url)
@@ -106,12 +103,20 @@ async def websocket_endpoint(websocket: WebSocket):
         async with httpx.AsyncClient() as client:
             tasks = []
             for url in urls:
+                # --- THIS IS THE MODIFIED VALIDATION LOGIC ---
+                # Add "https://" if missing
                 if not url.startswith(("http://", "https://")):
                     url = f"https://{url}"
-                if not validators.url(url):
-                    await websocket.send_json({"url": url, "status": "Invalid", "comment": "Improper URL format", "serverName": "N/A"})
+                
+                # Use a more lenient validation method
+                try:
+                    parsed_url = urlparse(url)
+                    if not (parsed_url.scheme and parsed_url.netloc):
+                        raise ValueError
+                except ValueError:
+                    await websocket.send_json({"url": url, "status": "Invalid", "comment": "Improper URL structure", "serverName": "N/A"})
                     continue
-                # 3. Create tasks for the new worker function
+
                 tasks.append(asyncio.create_task(bound_check(url, client)))
 
             for future in asyncio.as_completed(tasks):
