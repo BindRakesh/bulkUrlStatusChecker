@@ -259,7 +259,7 @@
             // --- NEW JAVASCRIPT ---: Function to validate the input
             function validateInput() {
                 const urls = linksInput.val().split('\n');
-                const hasB2BLink = urls.some(url => url.toLowerCase().includes('b2b.'));
+                const hasB2BLink = urls.some(url => url.toLowerCase().includes('b2b'));
 
                 if (hasB2BLink) {
                     linksInput.addClass('error-outline');
