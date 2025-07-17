@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from typing import List
 
 # --- Configuration ---
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- FastAPI App Initialization ---
@@ -54,67 +54,40 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
         
     return "Unknown"
 
-# --- NEW: Redirect Tracing Logic ---
+# --- Redirect Tracing Logic ---
 async def trace_redirect_chain(client: httpx.AsyncClient, initial_url: str):
-    """
-    Traces a URL through its redirect chain and collects details for each hop.
-    """
     redirect_chain = []
     current_url = initial_url
-    max_hops = 20 # Safety limit to prevent infinite loops
-
+    max_hops = 20
     try:
         for _ in range(max_hops):
             try:
                 response = await client.get(current_url, follow_redirects=False, timeout=20.0)
                 server_name = await get_server_name_advanced(dict(response.headers), str(response.url))
-                
-                hop_data = {
-                    "url": str(response.url),
-                    "status": response.status_code,
-                    "server": server_name
-                }
+                hop_data = {"url": str(response.url), "status": response.status_code, "server": server_name}
                 redirect_chain.append(hop_data)
 
                 if not response.is_redirect:
-                    # This is the final destination
-                    return {
-                        "originalURL": initial_url,
-                        "finalURL": str(response.url),
-                        "finalStatus": response.status_code,
-                        "redirectChain": redirect_chain,
-                        "error": None
-                    }
+                    return {"originalURL": initial_url, "finalURL": str(response.url), "finalStatus": response.status_code, "redirectChain": redirect_chain, "error": None}
                 
-                # Get the next location and ensure it's a valid URL
                 next_location = response.headers.get('location')
                 if not next_location:
-                    return {
-                        "originalURL": initial_url,
-                        "finalURL": str(response.url),
-                        "finalStatus": response.status_code,
-                        "redirectChain": redirect_chain,
-                        "error": "Redirect status with no Location header."
-                    }
+                    return {"originalURL": initial_url, "finalURL": str(response.url), "finalStatus": response.status_code, "redirectChain": redirect_chain, "error": "Redirect with no Location header."}
                 
-                # Handle relative redirects (e.g., /next-page)
                 current_url = urlparse(next_location, scheme=response.url.scheme, netloc=response.url.netloc).geturl()
 
             except httpx.RequestError as e:
-                return {"originalURL": initial_url, "error": f"Request failed: {type(e).__name__}"}
+                return {"originalURL": initial_url, "error": f"Request Failed: {type(e).__name__}"}
         
-        # If loop finishes, we've exceeded max hops
         return {"originalURL": initial_url, "error": f"Exceeded maximum redirects ({max_hops} hops)."}
-
     except Exception as e:
         logger.error(f"Unexpected error tracing {initial_url}: {e}")
         return {"originalURL": initial_url, "error": "An unexpected server error occurred."}
 
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    logger.info("Connection open")
+    logger.info("WebSocket connection open.")
     try:
         data = await websocket.receive_text()
         urls_to_process = [url.strip() for url in data.splitlines() if url.strip()]
@@ -124,11 +97,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
         async def bound_check(url, client):
             async with semaphore:
-                # Call the new redirect tracer function
                 return await trace_redirect_chain(client, url)
 
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-        async with httpx.AsyncClient(headers=headers) as client:
+        async with httpx.AsyncClient(headers=headers, verify=False) as client: # Added verify=False for flexibility
             tasks = []
             for url in urls_to_process:
                 if not url.startswith(("http://", "https://")):
