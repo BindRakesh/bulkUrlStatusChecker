@@ -8,6 +8,7 @@ import ipaddress
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from urllib.parse import urlparse
+from typing import List
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +25,6 @@ async def resolve_ip_async(hostname: str):
     if not hostname: return None
     if hostname in ip_cache: return ip_cache[hostname]
     try:
-        # Run the synchronous socket call in a separate thread
         ip = await asyncio.to_thread(socket.gethostbyname, hostname)
         ip_cache[hostname] = ip
         return ip
@@ -48,88 +48,101 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
         if "apache" in server_value: return "Apache (AEM)"
         return server_value.capitalize()
     
-    server_timing = headers.get("server-timing", "")
-    has_akamai_cache = "cdn-cache; desc=HIT" in server_timing or "cdn-cache; desc=MISS" in server_timing
-    has_akamai_request_id = "x-akamai-request-id" in headers
-    has_dispatcher = "x-dispatcher" in headers or "x-aem-instance" in headers
-    has_aem_paths = any("/etc.clientlibs" in v for h, v in headers.items() if h in ["link", "baqend-tags"])
     ip = await resolve_ip_async(hostname)
-    is_akamai = is_akamai_ip(ip)
-
-    if has_akamai_cache or has_akamai_request_id or (server_timing and is_akamai):
-        if has_aem_paths or has_dispatcher: return "Apache (AEM)"
+    if is_akamai_ip(ip):
         return "Akamai"
-    if has_dispatcher or has_aem_paths: return "Apache (AEM)"
-    if is_akamai: return "Akamai"
+        
     return "Unknown"
 
-async def check_url_status(client: httpx.AsyncClient, url: str):
-    """Checks a single URL and returns a result dictionary."""
+# --- NEW: Redirect Tracing Logic ---
+async def trace_redirect_chain(client: httpx.AsyncClient, initial_url: str):
+    """
+    Traces a URL through its redirect chain and collects details for each hop.
+    """
+    redirect_chain = []
+    current_url = initial_url
+    max_hops = 20 # Safety limit to prevent infinite loops
+
     try:
-        response = await client.get(url, follow_redirects=False, timeout=20.0)
-        server_name = await get_server_name_advanced(dict(response.headers), str(response.url))
-        comment = "OK"
-        if response.is_redirect:
-            location = response.headers.get('location', 'N/A')
-            comment = f"Redirect -> {location}"
-        else:
-            response.raise_for_status()
-        return {"url": url, "status": response.status_code, "comment": comment, "serverName": server_name}
-    except httpx.HTTPStatusError as e:
-        comment = "Client/Server Error"
-        server_name = "N/A"
-        if e.response.status_code == 404:
-            comment = "Not Found"
-        else:
-            server_name = await get_server_name_advanced(dict(e.response.headers), str(e.response.url))
-        return {"url": url, "status": e.response.status_code, "comment": comment, "serverName": server_name}
-    except httpx.RequestError as e:
-        return {"url": url, "status": "Error", "comment": f"Request failed: {type(e).__name__}", "serverName": "N/A"}
+        for _ in range(max_hops):
+            try:
+                response = await client.get(current_url, follow_redirects=False, timeout=20.0)
+                server_name = await get_server_name_advanced(dict(response.headers), str(response.url))
+                
+                hop_data = {
+                    "url": str(response.url),
+                    "status": response.status_code,
+                    "server": server_name
+                }
+                redirect_chain.append(hop_data)
+
+                if not response.is_redirect:
+                    # This is the final destination
+                    return {
+                        "originalURL": initial_url,
+                        "finalURL": str(response.url),
+                        "finalStatus": response.status_code,
+                        "redirectChain": redirect_chain,
+                        "error": None
+                    }
+                
+                # Get the next location and ensure it's a valid URL
+                next_location = response.headers.get('location')
+                if not next_location:
+                    return {
+                        "originalURL": initial_url,
+                        "finalURL": str(response.url),
+                        "finalStatus": response.status_code,
+                        "redirectChain": redirect_chain,
+                        "error": "Redirect status with no Location header."
+                    }
+                
+                # Handle relative redirects (e.g., /next-page)
+                current_url = urlparse(next_location, scheme=response.url.scheme, netloc=response.url.netloc).geturl()
+
+            except httpx.RequestError as e:
+                return {"originalURL": initial_url, "error": f"Request failed: {type(e).__name__}"}
+        
+        # If loop finishes, we've exceeded max hops
+        return {"originalURL": initial_url, "error": f"Exceeded maximum redirects ({max_hops} hops)."}
+
     except Exception as e:
-        logger.error(f"Unexpected error checking {url}: {e}")
-        return {"url": url, "status": "Error", "comment": "An unexpected error occurred", "serverName": "N/A"}
+        logger.error(f"Unexpected error tracing {initial_url}: {e}")
+        return {"originalURL": initial_url, "error": "An unexpected server error occurred."}
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """Handles the WebSocket connection and processes URLs."""
     await websocket.accept()
     logger.info("Connection open")
     try:
         data = await websocket.receive_text()
-        urls = [url.strip() for url in data.splitlines() if url.strip()]
+        urls_to_process = [url.strip() for url in data.splitlines() if url.strip()]
         
-        CONCURRENCY_LIMIT = 100
+        CONCURRENCY_LIMIT = 50
         semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
         async def bound_check(url, client):
             async with semaphore:
-                return await check_url_status(client, url)
+                # Call the new redirect tracer function
+                return await trace_redirect_chain(client, url)
 
-        async with httpx.AsyncClient() as client:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+        async with httpx.AsyncClient(headers=headers) as client:
             tasks = []
-            for url in urls:
+            for url in urls_to_process:
                 if not url.startswith(("http://", "https://")):
                     url = f"https://{url}"
-                
-                try:
-                    parsed_url = urlparse(url)
-                    if not (parsed_url.scheme and parsed_url.netloc):
-                        raise ValueError
-                except ValueError:
-                    await websocket.send_json({"url": url, "status": "Invalid", "comment": "Improper URL structure", "serverName": "N/A"})
-                    continue
-
                 tasks.append(asyncio.create_task(bound_check(url, client)))
 
             for future in asyncio.as_completed(tasks):
                 result = await future
                 await websocket.send_json(result)
         
-        logger.info("All tasks complete. Sending 'done' signal to client.")
         await websocket.send_json({"status": "done"})
 
     except WebSocketDisconnect:
-        logger.info("Client disconnected prematurely.")
+        logger.info("Client disconnected.")
     except Exception as e:
         logger.error(f"An error occurred in WebSocket: {e}")
     finally:
