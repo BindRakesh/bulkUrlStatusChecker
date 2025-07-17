@@ -3,196 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk URL Status Checker</title>
+    <title>URL Redirect & Hop Analyzer</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔗</text></svg>">
     
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
     
     <style>
-        :root {
-            --primary-color: #007bff;
-            --primary-hover-color: #0056b3;
-            --success-color: #28a745;
-            --error-color: #dc3545;
-            --light-gray: #f8f9fa;
-            --gray-border: #dee2e6;
-            --text-color: #343a40;
-            --heading-color: #212529;
-            --white-color: #ffffff;
+        body { font-family: sans-serif; margin: 2em; background-color: #f8f9fa; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        textarea { width: 100%; box-sizing: border-box; min-height: 200px; margin-bottom: 1em; font-family: monospace; }
+        button { display: block; width: 100%; padding: 12px; font-size: 1.1em; }
+        .dataTables_wrapper { margin-top: 2em; }
+        td.dt-control {
+            background: url('https://datatables.net/examples/resources/details_open.png') no-repeat center center;
+            cursor: pointer;
         }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            margin: 0; 
-            background-color: var(--light-gray); 
-            color: var(--text-color);
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
+        tr.dt-hasChild td.dt-control {
+            background: url('https://datatables.net/examples/resources/details_close.png') no-repeat center center;
         }
-        .main-container {
-            max-width: 1200px; 
-            margin: 2em auto; 
-            background: var(--white-color); 
-            padding: 2.5em; 
-            border-radius: 12px; 
-            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
-            flex-grow: 1;
-        }
-        h1 { 
-            text-align: center; 
-            color: var(--heading-color);
-            font-weight: 600;
-            margin-bottom: 0.5em;
-        }
-        .header-icon {
-            font-size: 2.5rem;
-            vertical-align: middle;
-            margin-right: 0.2em;
-        }
-        p.description {
-            text-align: center;
-            font-size: 1.1rem;
-            color: #6c757d;
-            margin-bottom: 2em;
-        }
-        textarea { 
-            width: 100%; 
-            box-sizing: border-box; 
-            min-height: 250px; 
-            margin-bottom: 1em; 
-            border: 1px solid var(--gray-border); 
-            border-radius: 8px; 
-            padding: 12px; 
-            font-family: monospace;
-            font-size: 1rem;
-            resize: vertical;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
-        }
-        textarea.error-outline {
-            border-color: var(--error-color);
-            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
-        }
-        #checkBtn { 
-            display: block; 
-            width: 100%; 
-            padding: 14px; 
-            background-color: var(--primary-color); 
-            color: var(--white-color); 
-            border: none; 
-            cursor: pointer; 
-            border-radius: 8px; 
-            font-size: 1.1rem; 
-            font-weight: bold;
-            transition: background-color 0.2s ease-in-out;
-        }
-        #checkBtn:hover:not(:disabled) {
-            background-color: var(--primary-hover-color);
-        }
-        #checkBtn:disabled { 
-            background-color: #cccccc; 
-            cursor: not-allowed; 
-        }
-        .status-message { 
-            text-align: center; 
-            margin-top: 1em; 
-            padding: 12px; 
-            border-radius: 8px; 
-            display: none; 
-            font-weight: 500;
-        }
-        .status-message.success { 
-            background-color: #d4edda; 
-            color: #155724; 
-            border: 1px solid #c3e6cb; 
-        }
-        .status-message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        #progressContainer { 
-            margin-top: 1.5em; 
-        }
-        .progress-bar-background { 
-            width: 100%; 
-            background-color: #e9ecef; 
-            border-radius: 8px; 
-            height: 22px; 
-            overflow: hidden;
-        }
-        #progressBar { 
-            width: 0%; 
-            height: 100%; 
-            background-color: var(--success-color); 
-            text-align: center; 
-            line-height: 22px; 
-            color: var(--white-color); 
-            font-weight: bold;
-            transition: width .4s ease; 
-        }
-        #progressText { 
-            text-align: center; 
-            margin-bottom: .5rem; 
-            font-weight: 500;
-            color: #495057;
-        }
-        .dataTables_wrapper { 
-            margin-top: 2.5em; 
-        }
-        footer {
-            text-align: center;
-            padding: 1.5em;
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-        footer a {
-            color: var(--primary-color);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        footer a:hover {
-            text-decoration: underline;
-        }
+        .hop-table { width: 100%; margin: 1em 0; border-collapse: collapse; }
+        .hop-table th, .hop-table td { border: 1px solid #e0e0e0; padding: 8px; text-align: left; }
+        .hop-table th { background-color: #f2f2f2; }
     </style>
 </head>
 <body>
-    <div class="main-container">
-        <h1><span class="header-icon">🔗</span>Bulk URL Status Checker</h1>
-        <p class="description">Enter URLs below to check their HTTP status and server type in real-time.</p>
-        
-        <textarea id="linksInput" placeholder="https://www.google.com&#10;https://www.github.com&#10;https://render.com"></textarea>
-        <button id="checkBtn">Check Status</button>
-        
-        <div id="statusMessage" class="status-message"></div>
-        <div id="progressContainer" style="display: none;">
-            <div id="progressText"></div>
-            <div class="progress-bar-background">
-                <div id="progressBar"></div>
-            </div>
-        </div>
-        
-        <table id="statusTable" class="display" style="width:100%">
+    <div class="container">
+        <h1>🔗 URL Redirect & Hop Analyzer</h1>
+        <textarea id="linksInput" placeholder="Enter one or more URLs, each on a new line..."></textarea>
+        <button id="checkBtn">Analyze URLs</button>
+        <table id="resultsTable" class="display" style="width:100%">
             <thead>
                 <tr>
-                    <th width="50%">URL</th>
-                    <th width="10%">Status</th>
-                    <th width="15%">Server Name</th>
-                    <th width="25%">Comment</th>
+                    <th></th> <th>Original URL</th>
+                    <th>Final URL</th>
+                    <th>Final Status</th>
+                    <th>Comment</th>
                 </tr>
             </thead>
             <tbody></tbody>
         </table>
     </div>
-
-    <footer>
-        Created by <a href="https://github.com/BindRakesh" target="_blank" rel="noopener noreferrer">BindRakesh</a>
-    </footer>
 
     <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -201,115 +52,90 @@
     <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
 
     <script>
+        function formatHopDetails(redirectChain) {
+            if (!redirectChain || redirectChain.length <= 1) {
+                return '<div style="padding:10px;">No redirects to display.</div>';
+            }
+            let detailsHtml = '<table class="hop-table"><thead><tr><th>#</th><th>URL</th><th>Status</th><th>Server</th></tr></thead><tbody>';
+            redirectChain.forEach((hop, index) => {
+                detailsHtml += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td style="word-break:break-all;">${hop.url}</td>
+                        <td>${hop.status}</td>
+                        <td>${hop.server || 'N/A'}</td>
+                    </tr>
+                `;
+            });
+            detailsHtml += '</tbody></table>';
+            return detailsHtml;
+        }
+
         $(document).ready(function() {
-            const table = $('#statusTable').DataTable({
+            const table = $('#resultsTable').DataTable({
                 dom: 'Bfrtip',
                 buttons: ['excelHtml5'],
                 columns: [
-                    { data: 'url' }, { data: 'status' },
-                    { data: 'serverName' }, { data: 'comment' }
-                ]
+                    { className: 'dt-control', orderable: false, data: null, defaultContent: '' },
+                    { data: 'originalURL' },
+                    { data: 'finalURL' },
+                    { data: 'finalStatus' },
+                    { data: 'comment' }
+                ],
+                order: [[1, 'asc']]
             });
 
-            const checkBtn = $('#checkBtn');
-            const linksInput = $('#linksInput');
-            const statusMessage = $('#statusMessage');
-            const progressContainer = $('#progressContainer');
-            const progressBar = $('#progressBar');
-            const progressText = $('#progressText');
-            let socket;
-
-            // Function to validate the input for "b2b" links
-            function validateInput() {
-                const urls = linksInput.val().split('\n');
-                // .some() checks if at least one URL meets the condition
-                const hasB2BLink = urls.some(url => url.toLowerCase().includes('b2b.'));
-
-                if (hasB2BLink) {
-                    linksInput.addClass('error-outline');
-                    statusMessage.text("Please don't enter testlink").removeClass('success').addClass('error').show();
-                    checkBtn.prop('disabled', true);
-                    return false; // Input is invalid
+            $('#resultsTable tbody').on('click', 'td.dt-control', function() {
+                var tr = $(this).closest('tr');
+                var row = table.row(tr);
+                if (row.child.isShown()) {
+                    row.child.hide();
+                    tr.removeClass('dt-hasChild');
                 } else {
-                    linksInput.removeClass('error-outline');
-                    statusMessage.hide().removeClass('error');
-                    checkBtn.prop('disabled', false);
-                    return true; // Input is valid
+                    row.child(formatHopDetails(row.data().redirectChain)).show();
+                    tr.addClass('dt-hasChild');
                 }
-            }
+            });
 
-            // Run validation every time the user types or pastes into the text area
-            linksInput.on('input', validateInput);
-
-
-            checkBtn.on('click', function() {
-                // Run validation one last time before starting
-                if (!validateInput()) {
-                    return;
-                }
-
-                const urls = linksInput.val().split('\n').filter(Boolean);
+            $('#checkBtn').on('click', function() {
+                const urls = $('#linksInput').val().split('\n').filter(url => url.trim() !== '');
                 if (urls.length === 0) {
                     alert("Please enter at least one URL.");
                     return;
                 }
                 
-                if (socket && socket.readyState < 2) { socket.close(); }
                 table.clear().draw();
-                checkBtn.prop('disabled', true).text('Checking...');
-                statusMessage.hide();
-                
-                let completedUrls = 0;
-                const totalUrls = urls.length;
-                progressText.text(`Checked 0 / ${totalUrls}`);
-                progressBar.css('width', '0%').text('');
-                progressContainer.show();
+                $(this).prop('disabled', true).text('Checking...');
 
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                // For Render deployment, it will connect to the same host. For local, it's localhost.
-                const ws_host = window.location.host; 
+                const ws_host = window.location.host;
                 const socket_url = `${protocol}//${ws_host}/ws`;
-                
-                socket = new WebSocket(socket_url);
+                const socket = new WebSocket(socket_url);
 
-                socket.onopen = function() {
-                    // Send the raw text, letting the backend parse it.
-                    socket.send(linksInput.val());
-                };
+                socket.onopen = () => socket.send($('#linksInput').val());
 
-                socket.onmessage = function(event) {
+                socket.onmessage = (event) => {
                     const data = JSON.parse(event.data);
-                    
                     if (data.status === 'done') {
-                        progressText.text(`Checked ${totalUrls} / ${totalUrls}`);
-                        progressBar.css('width', '100%').text('100%');
-                        setTimeout(function() {
-                            progressContainer.hide();
-                            statusMessage.text(`Processing complete! ${totalUrls} URLs checked.`).addClass('success').show();
-                        }, 500);
-                        checkBtn.prop('disabled', false).text('Check Status');
-                        socket.close();
+                        $('#checkBtn').prop('disabled', false).text('Analyze URLs');
                         return;
                     }
                     
-                    completedUrls++;
-                    const percentage = Math.round((completedUrls / totalUrls) * 100);
-                    progressText.text(`Checked ${completedUrls} / ${totalUrls}`);
-                    progressBar.css('width', percentage + '%').text(percentage + '%');
-                    table.row.add(data).draw(false);
+                    const rowData = {
+                        originalURL: data.originalURL,
+                        finalURL: data.finalURL || 'N/A',
+                        finalStatus: data.finalStatus || 'Error',
+                        comment: data.error || 'OK',
+                        redirectChain: data.redirectChain || []
+                    };
+                    table.row.add(rowData).draw(false);
                 };
 
-                socket.onclose = function(event) {
-                    if (checkBtn.prop('disabled')) {
-                        checkBtn.prop('disabled', false).text('Check Status');
-                    }
-                };
-
-                socket.onerror = function(error) {
-                    console.error("WebSocket Error: ", error);
-                    statusMessage.text("Could not connect to the server. Please ensure the backend is running.").removeClass('success').addClass('error').show();
-                    checkBtn.prop('disabled', false).text('Check Status');
-                    progressContainer.hide();
+                socket.onclose = () => $('#checkBtn').prop('disabled', false).text('Analyze URLs');
+                socket.onerror = (error) => {
+                    console.error("WebSocket Error:", error);
+                    alert("Could not connect to the server.");
+                    $('#checkBtn').prop('disabled', false).text('Analyze URLs');
                 };
             });
         });
