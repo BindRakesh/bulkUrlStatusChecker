@@ -14,16 +14,15 @@
             --primary-color: #007bff;
             --primary-hover-color: #0056b3;
             --success-color: #28a745;
-            --error-color: #dc3545; /* New color for errors */
+            --error-color: #dc3545;
             --light-gray: #f8f9fa;
             --gray-border: #dee2e6;
             --text-color: #343a40;
             --heading-color: #212529;
             --white-color: #ffffff;
         }
-
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             margin: 0; 
             background-color: var(--light-gray); 
             color: var(--text-color);
@@ -31,7 +30,6 @@
             flex-direction: column;
             min-height: 100vh;
         }
-        
         .main-container {
             max-width: 1200px; 
             margin: 2em auto; 
@@ -41,27 +39,23 @@
             box-shadow: 0 8px 30px rgba(0,0,0,0.08);
             flex-grow: 1;
         }
-
         h1 { 
             text-align: center; 
             color: var(--heading-color);
             font-weight: 600;
             margin-bottom: 0.5em;
         }
-
         .header-icon {
             font-size: 2.5rem;
             vertical-align: middle;
             margin-right: 0.2em;
         }
-
         p.description {
             text-align: center;
             font-size: 1.1rem;
             color: #6c757d;
             margin-bottom: 2em;
         }
-
         textarea { 
             width: 100%; 
             box-sizing: border-box; 
@@ -73,20 +67,17 @@
             font-family: monospace;
             font-size: 1rem;
             resize: vertical;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        
         textarea:focus {
             outline: none;
             border-color: var(--primary-color);
             box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
         }
-
-        /* --- NEW CSS ---: Style for the red error outline */
         textarea.error-outline {
             border-color: var(--error-color);
             box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
         }
-
         #checkBtn { 
             display: block; 
             width: 100%; 
@@ -100,16 +91,13 @@
             font-weight: bold;
             transition: background-color 0.2s ease-in-out;
         }
-        
         #checkBtn:hover:not(:disabled) {
             background-color: var(--primary-hover-color);
         }
-        
         #checkBtn:disabled { 
             background-color: #cccccc; 
             cursor: not-allowed; 
         }
-
         .status-message { 
             text-align: center; 
             margin-top: 1em; 
@@ -118,24 +106,19 @@
             display: none; 
             font-weight: 500;
         }
-
         .status-message.success { 
             background-color: #d4edda; 
             color: #155724; 
             border: 1px solid #c3e6cb; 
         }
-
-        /* --- NEW CSS ---: Style for the error message text */
         .status-message.error {
             background-color: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
-
         #progressContainer { 
             margin-top: 1.5em; 
         }
-        
         .progress-bar-background { 
             width: 100%; 
             background-color: #e9ecef; 
@@ -143,7 +126,6 @@
             height: 22px; 
             overflow: hidden;
         }
-
         #progressBar { 
             width: 0%; 
             height: 100%; 
@@ -154,45 +136,26 @@
             font-weight: bold;
             transition: width .4s ease; 
         }
-        
         #progressText { 
             text-align: center; 
             margin-bottom: .5rem; 
             font-weight: 500;
             color: #495057;
         }
-
         .dataTables_wrapper { 
             margin-top: 2.5em; 
         }
-
-        table.dataTable {
-            table-layout: fixed;
-            width: 100% !important;
-        }
-
-        table.dataTable tbody td {
-            white-space: nowrap;
-        }
-        
-        table.dataTable tbody tr td:first-child {
-            overflow-x: auto;
-            max-width: 0;
-        }
-
         footer {
             text-align: center;
             padding: 1.5em;
             color: #6c757d;
             font-size: 0.9rem;
         }
-        
         footer a {
             color: var(--primary-color);
             text-decoration: none;
             font-weight: 500;
         }
-        
         footer a:hover {
             text-decoration: underline;
         }
@@ -256,10 +219,11 @@
             const progressText = $('#progressText');
             let socket;
 
-            // --- NEW JAVASCRIPT ---: Function to validate the input
+            // Function to validate the input for "b2b" links
             function validateInput() {
                 const urls = linksInput.val().split('\n');
-                const hasB2BLink = urls.some(url => url.toLowerCase().includes('b2b'));
+                // .some() checks if at least one URL meets the condition
+                const hasB2BLink = urls.some(url => url.toLowerCase().includes('b2b.'));
 
                 if (hasB2BLink) {
                     linksInput.addClass('error-outline');
@@ -274,12 +238,12 @@
                 }
             }
 
-            // --- NEW JAVASCRIPT ---: Run validation every time the user types or pastes
+            // Run validation every time the user types or pastes into the text area
             linksInput.on('input', validateInput);
 
 
             checkBtn.on('click', function() {
-                // --- MODIFICATION ---: Run validation one last time before starting
+                // Run validation one last time before starting
                 if (!validateInput()) {
                     return;
                 }
@@ -302,16 +266,20 @@
                 progressContainer.show();
 
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const ws_host = window.location.host;
+                // For Render deployment, it will connect to the same host. For local, it's localhost.
+                const ws_host = window.location.host; 
                 const socket_url = `${protocol}//${ws_host}/ws`;
+                
                 socket = new WebSocket(socket_url);
 
                 socket.onopen = function() {
+                    // Send the raw text, letting the backend parse it.
                     socket.send(linksInput.val());
                 };
 
                 socket.onmessage = function(event) {
                     const data = JSON.parse(event.data);
+                    
                     if (data.status === 'done') {
                         progressText.text(`Checked ${totalUrls} / ${totalUrls}`);
                         progressBar.css('width', '100%').text('100%');
@@ -334,13 +302,12 @@
                 socket.onclose = function(event) {
                     if (checkBtn.prop('disabled')) {
                         checkBtn.prop('disabled', false).text('Check Status');
-                        // Do not hide progress on close, only on completion or error
                     }
                 };
 
                 socket.onerror = function(error) {
                     console.error("WebSocket Error: ", error);
-                    statusMessage.text("Could not connect to the server. Please ensure the backend is running.").addClass('error').show();
+                    statusMessage.text("Could not connect to the server. Please ensure the backend is running.").removeClass('success').addClass('error').show();
                     checkBtn.prop('disabled', false).text('Check Status');
                     progressContainer.hide();
                 };
