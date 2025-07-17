@@ -7,7 +7,7 @@ import socket
 import ipaddress
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from urllib.parse import urlparse # No longer need 'validators'
+from urllib.parse import urlparse
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # --- FastAPI App Initialization ---
 app = FastAPI()
 
-# --- Server Name Detection Logic (omitted for brevity, no changes here) ---
+# --- Server Name Detection Logic ---
 AKAMAI_IP_RANGES = ["23.192.0.0/11", "104.64.0.0/10", "184.24.0.0/13"]
 ip_cache = {}
 
@@ -24,6 +24,7 @@ async def resolve_ip_async(hostname: str):
     if not hostname: return None
     if hostname in ip_cache: return ip_cache[hostname]
     try:
+        # Run the synchronous socket call in a separate thread
         ip = await asyncio.to_thread(socket.gethostbyname, hostname)
         ip_cache[hostname] = ip
         return ip
@@ -46,6 +47,7 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
         if "akamai" in server_value or "ghost" in server_value: return "Akamai"
         if "apache" in server_value: return "Apache (AEM)"
         return server_value.capitalize()
+    
     server_timing = headers.get("server-timing", "")
     has_akamai_cache = "cdn-cache; desc=HIT" in server_timing or "cdn-cache; desc=MISS" in server_timing
     has_akamai_request_id = "x-akamai-request-id" in headers
@@ -53,6 +55,7 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
     has_aem_paths = any("/etc.clientlibs" in v for h, v in headers.items() if h in ["link", "baqend-tags"])
     ip = await resolve_ip_async(hostname)
     is_akamai = is_akamai_ip(ip)
+
     if has_akamai_cache or has_akamai_request_id or (server_timing and is_akamai):
         if has_aem_paths or has_dispatcher: return "Apache (AEM)"
         return "Akamai"
@@ -61,9 +64,10 @@ async def get_server_name_advanced(headers: dict, url: str) -> str:
     return "Unknown"
 
 async def check_url_status(client: httpx.AsyncClient, url: str):
+    """Checks a single URL and returns a result dictionary."""
     try:
         response = await client.get(url, follow_redirects=False, timeout=20.0)
-        server_name = await get_server_name_advanced(response.headers, str(response.url))
+        server_name = await get_server_name_advanced(dict(response.headers), str(response.url))
         comment = "OK"
         if response.is_redirect:
             location = response.headers.get('location', 'N/A')
@@ -77,16 +81,17 @@ async def check_url_status(client: httpx.AsyncClient, url: str):
         if e.response.status_code == 404:
             comment = "Not Found"
         else:
-            server_name = await get_server_name_advanced(e.response.headers, str(e.response.url))
+            server_name = await get_server_name_advanced(dict(e.response.headers), str(e.response.url))
         return {"url": url, "status": e.response.status_code, "comment": comment, "serverName": server_name}
     except httpx.RequestError as e:
         return {"url": url, "status": "Error", "comment": f"Request failed: {type(e).__name__}", "serverName": "N/A"}
     except Exception as e:
-        return {"url": url, "status": "Error", "comment": f"An unexpected error occurred", "serverName": "N/A"}
-
+        logger.error(f"Unexpected error checking {url}: {e}")
+        return {"url": url, "status": "Error", "comment": "An unexpected error occurred", "serverName": "N/A"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """Handles the WebSocket connection and processes URLs."""
     await websocket.accept()
     logger.info("Connection open")
     try:
@@ -103,12 +108,9 @@ async def websocket_endpoint(websocket: WebSocket):
         async with httpx.AsyncClient() as client:
             tasks = []
             for url in urls:
-                # --- THIS IS THE MODIFIED VALIDATION LOGIC ---
-                # Add "https://" if missing
                 if not url.startswith(("http://", "https://")):
                     url = f"https://{url}"
                 
-                # Use a more lenient validation method
                 try:
                     parsed_url = urlparse(url)
                     if not (parsed_url.scheme and parsed_url.netloc):
